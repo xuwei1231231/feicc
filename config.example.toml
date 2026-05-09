@@ -1,0 +1,51 @@
+# feicc 配置文件
+# 复制为 config.toml 后修改
+
+[server]
+data_dir = ".feicc-data"    # 数据目录（SQLite、密钥等）
+
+[feishu]
+app_id = ""                 # 飞书应用 App ID
+app_secret = ""             # 飞书应用 App Secret
+verification_token = ""     # 事件订阅验证 Token（可留空）
+encrypt_key = ""            # 加密密钥（可留空）
+allow_users = []            # 用户白名单（open_id），空 = 不限制
+group_at_only = true        # 群聊仅 @bot 时响应
+reply_in_thread = true      # 群聊在 thread 内回复
+
+# ─── 远程服务器（通过 SSH 连接，调用 claude CLI）───
+# 可以配置多台，也可以在飞书里通过卡片表单动态添加
+
+[[remote]]
+id = "my-server"
+name = "我的服务器"
+host = "your-server-ip-or-domain"
+user = "ubuntu"
+key = "/path/to/ssh/private-key.pem"
+# claude_path = "claude"    # 可选，默认在 PATH 中查找
+default_workspace = "home"
+
+  [[remote.workspace]]
+  id = "home"
+  name = "Home"
+  cwd = "/home/ubuntu"
+
+  # 可以添加更多工作区
+  # [[remote.workspace]]
+  # id = "project"
+  # name = "我的项目"
+  # cwd = "/home/ubuntu/my-project"
+
+# 添加更多服务器：
+# [[remote]]
+# id = "another-server"
+# name = "另一台服务器"
+# host = "another-host"
+# user = "ubuntu"
+# key = "/path/to/another-key.pem"
+# default_workspace = "home"
+#
+#   [[remote.workspace]]
+#   id = "home"
+#   name = "Home"
+#   cwd = "/home/ubuntu"

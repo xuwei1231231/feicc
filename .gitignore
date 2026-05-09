@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Runtime data
+.feicc-data/
+.feishu-claude-data/
+*.db
+*.db-shm
+*.db-wal
+hub.log
+
+# Config with secrets
+config.toml
+
+# SSH keys
+*.pem
+keys/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+feicc.log
+*.log
+*.log.bak
+
+# Backup
+.git.backup/

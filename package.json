@@ -1,0 +1,37 @@
+{
+  "name": "feicc",
+  "version": "0.1.0",
+  "description": "飞书 × Claude Code — 在飞书中操控远程服务器上的 Claude Code",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/index.ts config.toml",
+    "build": "tsc",
+    "start": "node dist/index.js config.toml",
+    "test": "tsx test/cards.test.ts && tsx test/fixes.test.ts"
+  },
+  "keywords": [
+    "feishu",
+    "lark",
+    "claude",
+    "claude-code",
+    "ide",
+    "bot"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@iarna/toml": "^2.2.5",
+    "@larksuiteoapi/node-sdk": "^1.35.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "better-sqlite3": "^11.6.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.0",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
