@@ -1,6 +1,6 @@
 # feicc
 
-[![CI](https://github.com/YOUR_USERNAME/feicc/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/feicc/actions/workflows/ci.yml)
+[![CI](https://github.com/xuwei1231231/feicc/actions/workflows/ci.yml/badge.svg)](https://github.com/xuwei1231231/feicc/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org)
 
@@ -53,7 +53,7 @@ feicc 通过飞书 WebSocket 长连接接收消息和卡片回调（不需要公
 ### 1. 安装
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/feicc.git
+git clone https://github.com/xuwei1231231/feicc.git
 cd feicc
 npm install
 ```
