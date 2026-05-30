@@ -200,43 +200,49 @@ export function serverListCard(
       text: { tag: 'lark_md', content: '⚠️ 没有配置服务器，请编辑 config.toml 添加。' },
     });
   } else {
-    for (const s of servers) {
+    servers.forEach((s) => {
       const isCurrent = s.id === currentServerId;
       const statusIcon = s.status === 'online' ? '🟢' : (s.status === 'auth_error' ? '🟡' : '⚪');
-      const currentBadge = isCurrent ? '  ✅ 当前' : '';
-      const ws = s.workspaces.length > 0 ? s.workspaces.join(' / ') : '(无工作区)';
+      const currentBadge = isCurrent ? ' ✅' : '';
+      const ws = s.workspaces.length > 0 ? `📁${s.workspaces.join('/')}` : '';
 
+      // One row per server: text on the left, an overflow (···) menu on the right.
+      // Selecting an option triggers the same actions as before.
       elements.push({
         tag: 'div',
         text: {
           tag: 'lark_md',
-          content: `${statusIcon} **${s.id}** — ${s.name} (${s.host})${currentBadge}\n　　📁 ${ws}`,
+          content: `${statusIcon} **${s.id}**${currentBadge} · ${s.name} · \`${s.host}\` · ${ws}`,
+        },
+        extra: {
+          tag: 'overflow',
+          options: [
+            {
+              text: { tag: 'plain_text', content: isCurrent ? '✅ 当前已选中' : '🖥️ 选择此服务器' },
+              value: 'select',
+            },
+            {
+              text: { tag: 'plain_text', content: '🔧 测试连接' },
+              value: 'test',
+            },
+            {
+              text: { tag: 'plain_text', content: '⚙️ 编辑' },
+              value: 'edit',
+            },
+            {
+              text: { tag: 'plain_text', content: '🗑 删除' },
+              value: 'delete',
+            },
+          ],
+          value: actionValue('server_menu', { serverId: s.id }),
         },
       });
-    }
-
-    elements.push({ tag: 'hr' });
-
-    // Button row: each server is a clickable button
-    const buttons = servers.map(s => ({
-      tag: 'button',
-      text: { tag: 'plain_text', content: s.id === currentServerId ? `✅ ${s.id}` : `🖥️ ${s.id}` },
-      type: s.id === currentServerId ? 'primary' : 'default',
-      value: actionValue('select_server', { serverId: s.id }),
-    }));
-
-    // Add test-all button
-    buttons.push({
-      tag: 'button',
-      text: { tag: 'plain_text', content: '🔧 测试全部' },
-      type: 'default' as any,
-      value: actionValue('test_all_servers'),
     });
 
-    elements.push({ tag: 'action', actions: buttons });
+    elements.push({ tag: 'hr' });
   }
 
-  // Add server button (always show)
+  // Bottom row: add + test-all (always visible)
   elements.push({
     tag: 'action',
     actions: [
@@ -246,6 +252,12 @@ export function serverListCard(
         type: 'default',
         value: actionValue('show_add_server'),
       },
+      ...(servers.length > 0 ? [{
+        tag: 'button',
+        text: { tag: 'plain_text', content: '🔧 测试全部' },
+        type: 'default' as any,
+        value: actionValue('test_all_servers'),
+      }] : []),
     ],
   });
 
@@ -679,6 +691,167 @@ export function addServerFormCard() {
             action_type: 'form_submit',
             name: 'submit_add_server',
             value: actionValue('submit_add_server'),
+          },
+        ],
+      },
+    ],
+  };
+}
+
+// ─── Edit Server Form Card ───
+
+export function editServerFormCard(server: {
+  id: string;
+  name: string;
+  host: string;
+  user: string;
+  key: string;
+  default_workspace?: string;
+  workspaces: { id: string; name: string; cwd: string }[];
+}) {
+  const defWs = server.workspaces.find(w => w.id === (server.default_workspace ?? server.workspaces[0]?.id));
+  const defaultCwd = defWs?.cwd ?? '';
+
+  return {
+    config: { wide_screen_mode: true },
+    header: {
+      title: { tag: 'plain_text', content: `⚙️ 编辑服务器 [${server.id}]` },
+      template: 'orange',
+    },
+    elements: [
+      {
+        tag: 'div',
+        text: {
+          tag: 'lark_md',
+          content: `> 服务器 ID **\`${server.id}\`** 不可修改。如需重命名，请删除后重新添加。\n> 留空字段表示保持不变。`,
+        },
+      },
+      {
+        tag: 'form',
+        name: 'edit_server_form',
+        elements: [
+          {
+            tag: 'input',
+            name: 'server_name',
+            default_value: server.name,
+            placeholder: { tag: 'plain_text', content: '名称' },
+            label: { tag: 'plain_text', content: '名称' },
+            label_position: 'top',
+            width: 'fill',
+            max_length: 100,
+          },
+          {
+            tag: 'input',
+            name: 'server_host',
+            default_value: server.host,
+            placeholder: { tag: 'plain_text', content: 'SSH 主机地址' },
+            label: { tag: 'plain_text', content: 'SSH 主机地址' },
+            label_position: 'top',
+            width: 'fill',
+            max_length: 200,
+          },
+          {
+            tag: 'input',
+            name: 'server_user',
+            default_value: server.user,
+            placeholder: { tag: 'plain_text', content: 'SSH 用户名' },
+            label: { tag: 'plain_text', content: 'SSH 用户名' },
+            label_position: 'top',
+            width: 'fill',
+            max_length: 50,
+          },
+          {
+            tag: 'input',
+            name: 'server_key',
+            default_value: server.key,
+            placeholder: { tag: 'plain_text', content: 'SSH 私钥文件路径' },
+            label: { tag: 'plain_text', content: 'SSH 私钥路径（如需替换密钥可清空后另上传 PEM）' },
+            label_position: 'top',
+            width: 'fill',
+            max_length: 300,
+          },
+          {
+            tag: 'input',
+            name: 'workspace_cwd',
+            default_value: defaultCwd,
+            placeholder: { tag: 'plain_text', content: '默认工作区 cwd' },
+            label: { tag: 'plain_text', content: `默认工作区 cwd (${defWs?.id ?? '-'})` },
+            label_position: 'top',
+            width: 'fill',
+            max_length: 300,
+          },
+          {
+            tag: 'button',
+            text: { tag: 'plain_text', content: '💾 保存修改' },
+            type: 'primary',
+            action_type: 'form_submit',
+            name: 'submit_edit_server',
+            value: actionValue('submit_edit_server', { serverId: server.id }),
+          },
+          {
+            tag: 'button',
+            text: { tag: 'plain_text', content: '📤 重新上传密钥' },
+            type: 'default',
+            name: 'reupload_key_btn',
+            value: actionValue('reupload_key', { serverId: server.id }),
+          },
+          {
+            tag: 'button',
+            text: { tag: 'plain_text', content: '↩ 返回' },
+            type: 'default',
+            name: 'back_to_servers_btn',
+            value: actionValue('show_servers'),
+          },
+        ],
+      },
+    ],
+  };
+}
+
+// ─── Confirm Delete Server Card ───
+
+export function confirmDeleteServerCard(server: {
+  id: string;
+  name: string;
+  host: string;
+  workspaces: { id: string }[];
+}) {
+  const wsList = server.workspaces.map(w => w.id).join(' / ') || '(无)';
+  return {
+    config: { wide_screen_mode: true },
+    header: {
+      title: { tag: 'plain_text', content: `🗑 删除服务器 [${server.id}]?` },
+      template: 'red',
+    },
+    elements: [
+      {
+        tag: 'div',
+        text: {
+          tag: 'lark_md',
+          content:
+            `**确定要删除以下服务器吗？此操作不可撤销。**\n\n` +
+            `- ID: \`${server.id}\`\n` +
+            `- 名称: ${server.name}\n` +
+            `- 主机: \`${server.host}\`\n` +
+            `- 工作区: ${wsList}\n\n` +
+            `> 注意：当前指向该服务器的会话将失去关联，下条消息会回退到默认服务器。\n` +
+            `> SSH 私钥文件不会被自动删除。`,
+        },
+      },
+      {
+        tag: 'action',
+        actions: [
+          {
+            tag: 'button',
+            text: { tag: 'plain_text', content: '⚠️ 确认删除' },
+            type: 'danger',
+            value: actionValue('delete_server', { serverId: server.id }),
+          },
+          {
+            tag: 'button',
+            text: { tag: 'plain_text', content: '取消' },
+            type: 'default',
+            value: actionValue('show_servers'),
           },
         ],
       },

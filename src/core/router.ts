@@ -7,7 +7,7 @@ import path from 'path';
 import type { FeishuClient } from '../feishu/client.js';
 import type { Store, SessionRow } from '../store/db.js';
 import type { HubConfig, ServerConfig } from '../config.js';
-import { addServerToConfig, addWorkspaceToConfig } from '../config.js';
+import { addServerToConfig, addWorkspaceToConfig, updateServerInConfig, removeServerFromConfig } from '../config.js';
 import { execClaudeTask, testServer, type ClaudeEvent, type TaskHandle } from '../claude/executor.js';
 import { OutputManager } from './output.js';
 import { handleCommand } from './commands.js';
@@ -25,6 +25,8 @@ import {
   toastCard,
   addServerFormCard,
   addWorkspaceFormCard,
+  editServerFormCard,
+  confirmDeleteServerCard,
   uploadKeyPromptCard,
   usageCard,
   approvalCard,
@@ -256,22 +258,32 @@ export class Router {
 
       console.log(`[feicc] saved key for ${serverInfo.serverId}: ${keyPath}`);
 
-      // Now add server to config with the key path
-      addServerToConfig(this.config, {
-        id: serverInfo.serverId,
-        name: serverInfo.serverName,
-        host: serverInfo.serverHost,
-        user: serverInfo.serverUser,
-        key: keyPath,
-        cwd: serverInfo.workspaceCwd,
-      });
+      // Now add server to config with the key path (or update if replacing)
+      if (serverInfo.mode === 'replace' && this.getServer(serverInfo.serverId)) {
+        updateServerInConfig(this.config, serverInfo.serverId, {
+          name: serverInfo.serverName,
+          host: serverInfo.serverHost,
+          user: serverInfo.serverUser,
+          key: keyPath,
+          workspace_cwd: serverInfo.workspaceCwd,
+        });
+      } else {
+        addServerToConfig(this.config, {
+          id: serverInfo.serverId,
+          name: serverInfo.serverName,
+          host: serverInfo.serverHost,
+          user: serverInfo.serverUser,
+          key: keyPath,
+          cwd: serverInfo.workspaceCwd,
+        });
+      }
 
       // Clean up pending state
       pendingKeyUploads.delete(userId);
       this.store.clearPendingServer(userId);
 
       await this.feishu.replyCard(messageId, toastCard(
-        `✅ 密钥已保存，服务器 ${serverInfo.serverId} 配置完成！`, 'green',
+        `✅ 密钥已保存，服务器 ${serverInfo.serverId} ${serverInfo.mode === 'replace' ? '密钥已替换' : '配置完成'}！`, 'green',
       ));
 
       // Show updated server list
@@ -486,6 +498,35 @@ export class Router {
     const session = this.store.findSession(chatId, userId);
 
     switch (action) {
+      // ── Server overflow menu (compact server list "···") ──
+      case 'server_menu': {
+        // Feishu overflow: container value carries `serverId`, selected option arrives as fullAction.option (or .options)
+        const serverId = parsed.serverId;
+        const opt = fullAction?.option ?? fullAction?.options?.[0] ?? '';
+        if (!serverId || !opt) {
+          console.warn('[card-action] server_menu missing serverId/option:', { serverId, opt, fullAction });
+          break;
+        }
+        // Re-dispatch into the existing handlers by mutating parsed.action.
+        const remap: Record<string, string> = {
+          select: 'select_server',
+          test: 'test_server',
+          edit: 'show_edit_server',
+          delete: 'confirm_delete_server',
+        };
+        const next = remap[opt];
+        if (!next) {
+          console.warn('[card-action] server_menu unknown option:', opt);
+          break;
+        }
+        // Recurse with the mapped action. Reuse the same actionValue-shaped object.
+        await this.handleCardAction(
+          { action: next, serverId },
+          chatId, userId, messageId, fullAction,
+        );
+        return;
+      }
+
       // ── Server selection ──
       case 'select_server': {
         const serverId = parsed.serverId;
@@ -846,6 +887,125 @@ export class Router {
       case 'skip_key_upload': {
         pendingKeyUploads.delete(userId);
         await this.feishu.sendCard(chatId, toastCard('⏭ 已跳过密钥上传，请稍后手动配置', 'grey'));
+        break;
+      }
+
+      // ── Edit / delete server ──
+      case 'show_edit_server': {
+        const serverId = parsed.serverId;
+        const server = this.getServer(serverId);
+        if (!server) {
+          await this.feishu.sendCard(chatId, toastCard(`❌ 服务器 ${serverId} 不存在`, 'red'));
+          break;
+        }
+        await this.feishu.sendCard(chatId, editServerFormCard(server));
+        break;
+      }
+
+      case 'submit_edit_server': {
+        const form = fullAction?.form_value ?? parsed.form_value ?? {};
+        const serverId = parsed.serverId;
+        if (!serverId) {
+          await this.feishu.sendCard(chatId, toastCard('❌ 缺少 serverId', 'red'));
+          break;
+        }
+        const server = this.getServer(serverId);
+        if (!server) {
+          await this.feishu.sendCard(chatId, toastCard(`❌ 服务器 ${serverId} 不存在`, 'red'));
+          break;
+        }
+
+        const patch: any = {};
+        const trim = (v: any) => (typeof v === 'string' ? v.trim() : '');
+        const name = trim(form.server_name);
+        const host = trim(form.server_host);
+        const user = trim(form.server_user);
+        const key = trim(form.server_key);
+        const cwd = trim(form.workspace_cwd);
+
+        if (name && name !== server.name) patch.name = name;
+        if (host && host !== server.host) patch.host = host;
+        if (user && user !== server.user) patch.user = user;
+        if (key && key !== server.key) patch.key = key;
+        if (cwd) {
+          const defWsId = server.default_workspace ?? server.workspaces[0]?.id;
+          const defWs = server.workspaces.find(w => w.id === defWsId);
+          if (defWs && cwd !== defWs.cwd) patch.workspace_cwd = cwd;
+        }
+
+        if (Object.keys(patch).length === 0) {
+          await this.feishu.sendCard(chatId, toastCard('ℹ️ 没有变更可保存', 'grey'));
+          break;
+        }
+
+        try {
+          updateServerInConfig(this.config, serverId, patch);
+          const fields = Object.keys(patch).join(', ');
+          await this.feishu.sendCard(chatId, toastCard(`✅ 已更新 ${serverId}: ${fields}`, 'green'));
+
+          const servers = this.getServers().map(s => ({
+            id: s.id, name: s.name, status: 'configured' as string,
+            host: s.host, workspaces: s.workspaces.map(w => w.id),
+          }));
+          await this.feishu.sendCard(chatId, serverListCard(servers, session?.server_id));
+        } catch (err: any) {
+          await this.feishu.sendCard(chatId, toastCard(`❌ 更新失败: ${err.message}`, 'red'));
+        }
+        break;
+      }
+
+      case 'reupload_key': {
+        const serverId = parsed.serverId;
+        const server = this.getServer(serverId);
+        if (!server) {
+          await this.feishu.sendCard(chatId, toastCard(`❌ 服务器 ${serverId} 不存在`, 'red'));
+          break;
+        }
+        // Reuse the same upload flow as add-server: stash existing fields under pending_server.
+        const pendingInfo = JSON.stringify({
+          serverId: server.id,
+          serverName: server.name,
+          serverHost: server.host,
+          serverUser: server.user,
+          workspaceCwd: server.workspaces.find(w => w.id === (server.default_workspace ?? server.workspaces[0]?.id))?.cwd
+            ?? `/home/${server.user}`,
+          mode: 'replace',
+        });
+        this.store.setPendingServer(userId, pendingInfo);
+        pendingKeyUploads.set(userId, server.id);
+        await this.feishu.sendCard(chatId, uploadKeyPromptCard(server.id));
+        break;
+      }
+
+      case 'confirm_delete_server': {
+        const serverId = parsed.serverId;
+        const server = this.getServer(serverId);
+        if (!server) {
+          await this.feishu.sendCard(chatId, toastCard(`❌ 服务器 ${serverId} 不存在`, 'red'));
+          break;
+        }
+        await this.feishu.sendCard(chatId, confirmDeleteServerCard(server));
+        break;
+      }
+
+      case 'delete_server': {
+        const serverId = parsed.serverId;
+        if (!serverId) {
+          await this.feishu.sendCard(chatId, toastCard('❌ 缺少 serverId', 'red'));
+          break;
+        }
+        const removed = removeServerFromConfig(this.config, serverId);
+        if (!removed) {
+          await this.feishu.sendCard(chatId, toastCard(`❌ 服务器 ${serverId} 不存在`, 'red'));
+          break;
+        }
+        await this.feishu.sendCard(chatId, toastCard(`🗑 已删除服务器 ${serverId}`, 'orange'));
+
+        const servers = this.getServers().map(s => ({
+          id: s.id, name: s.name, status: 'configured' as string,
+          host: s.host, workspaces: s.workspaces.map(w => w.id),
+        }));
+        await this.feishu.sendCard(chatId, serverListCard(servers, session?.server_id));
         break;
       }
 

@@ -151,6 +151,54 @@ export function addServerToConfig(
 }
 
 /**
+ * Update fields on an existing server and persist.
+ * Only fields present in `patch` are changed; others stay as-is.
+ * Server id is immutable here (would invalidate sessions in store).
+ */
+export function updateServerInConfig(
+  config: HubConfig,
+  serverId: string,
+  patch: {
+    name?: string;
+    host?: string;
+    user?: string;
+    key?: string;
+    default_workspace?: string;
+    workspace_cwd?: string;  // updates the default workspace's cwd if provided
+  },
+): ServerConfig | null {
+  const server = config.remotes.find(r => r.id === serverId);
+  if (!server) return null;
+  if (patch.name !== undefined) server.name = patch.name;
+  if (patch.host !== undefined) server.host = patch.host;
+  if (patch.user !== undefined) server.user = patch.user;
+  if (patch.key !== undefined) server.key = patch.key;
+  if (patch.default_workspace !== undefined) server.default_workspace = patch.default_workspace;
+  if (patch.workspace_cwd !== undefined) {
+    const defWsId = server.default_workspace ?? server.workspaces[0]?.id;
+    const ws = server.workspaces.find(w => w.id === defWsId);
+    if (ws) ws.cwd = patch.workspace_cwd;
+  }
+  persistConfig(config);
+  return server;
+}
+
+/**
+ * Remove a server from config and persist. Returns the removed server, or null if not found.
+ * Note: caller is responsible for cleaning up SSH key files / sessions if desired.
+ */
+export function removeServerFromConfig(
+  config: HubConfig,
+  serverId: string,
+): ServerConfig | null {
+  const idx = config.remotes.findIndex(r => r.id === serverId);
+  if (idx < 0) return null;
+  const [removed] = config.remotes.splice(idx, 1);
+  persistConfig(config);
+  return removed;
+}
+
+/**
  * Add a workspace to an existing server and persist.
  */
 export function addWorkspaceToConfig(
