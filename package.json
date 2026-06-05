@@ -8,7 +8,8 @@
     "dev": "tsx src/index.ts config.toml",
     "build": "tsc",
     "start": "node dist/index.js config.toml",
-    "test": "tsx test/cards.test.ts && tsx test/fixes.test.ts"
+    "test": "tsx test/cards.test.ts && tsx test/fixes.test.ts",
+    "postinstall": "node -e \"try{require('better-sqlite3');}catch(e){if(e&&e.code==='MODULE_NOT_FOUND')process.exit(0);console.error('[feicc] better-sqlite3 native binding missing, rebuilding from source...');require('child_process').execSync('npm rebuild better-sqlite3 --build-from-source',{stdio:'inherit'});}\""
   },
   "keywords": [
     "feishu",
